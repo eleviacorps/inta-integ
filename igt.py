@@ -8,7 +8,7 @@ Usage:
   python igt.py read <name>       # Read messages (name or partial)
   python igt.py send <name> <msg> # Send a message
   python igt.py login             # Re-login if session expired
-  python igt.py watch             # Add current thread to watch list
+  python igt.py live              # Start live DM watcher daemon (polls every 20s)
 """
 
 import json
@@ -189,6 +189,18 @@ def cmd_login(cl):
     print("✓ Logged in, session saved.")
 
 
+def cmd_live(cl):
+    """Start live DM watcher daemon."""
+    import subprocess
+    import sys
+    args = sys.argv[2:]
+    cmd = [sys.executable, str(Path(__file__).parent / "ig_live.py")] + args
+    print("🚀 Starting IG Live daemon...")
+    print("   Polls every 20s. Press Ctrl+C to stop.")
+    print()
+    subprocess.run(cmd)
+
+
 def cmd_watch(cl):
     """Add threads from scan to watch list by matching name."""
     print("Usage: python igt.py watch <partial_name>")
@@ -215,6 +227,7 @@ def main():
         "send": lambda: cmd_send(cl, sys.argv[2] if len(sys.argv) > 2 else "",
                                " ".join(sys.argv[3:]) if len(sys.argv) > 3 else ""),
         "login": lambda: cmd_login(Client()),
+        "live": lambda: cmd_live(cl),
         "watch": lambda: cmd_watch(cl),
     }
 
