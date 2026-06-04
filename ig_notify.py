@@ -2,6 +2,7 @@
 """
 ig_notify.py — Check watched DM threads for new messages.
 Designed for cron: outputs nothing when quiet, prints alerts when new msgs appear.
+Thread config shared with igt.py via .igt_threads.json.
 """
 
 import json
@@ -15,14 +16,23 @@ os.chdir(PROJECT_DIR)
 
 SETTINGS_FILE = PROJECT_DIR / ".ig_settings.json"
 STATE_FILE = PROJECT_DIR / ".ig_notify_state.json"
+THREADS_FILE = PROJECT_DIR / ".igt_threads.json"
 
 from instagrapi import Client
 
-# ── Watched threads ─────────────────────────────────────────────────
-# Add more: "friendly name": "thread_id"
-WATCHED = {
+# Default watched threads (don't remove, can be overridden by .igt_threads.json)
+DEFAULT_WATCHED = {
     "dining room": "340282366841710301281152850720669272287",
+    "chandra": "340282366841710301244276166510740991224",
 }
+
+
+def load_watched():
+    """Load merged watch list (defaults + user additions)."""
+    watched = dict(DEFAULT_WATCHED)
+    if THREADS_FILE.exists():
+        watched.update(json.loads(THREADS_FILE.read_text()))
+    return watched
 
 
 def load_state():
@@ -51,20 +61,20 @@ def check_thread(cl, name, thread_id, state):
 
     # Build user map
     users = resp.get("thread", {}).get("users", [])
-    user_map = {str(u.get("pk", "")): u.get("username", "?") for u in users}
+    user_map = {str(u.get("pk", "")): f"@{u.get('username','?')}" for u in users}
+    me = str(cl.user_id)
 
     last_seen = state.get(thread_id, "")
     newest_id = items[0].get("item_id", "")
 
     if not last_seen:
-        # First run — just mark latest as seen
         state[thread_id] = newest_id
         return
 
     if newest_id == last_seen:
-        return  # no new messages
+        return
 
-    # Find new messages (older = later in list, they return newest-first)
+    # Find new messages (API returns newest-first)
     new_items = []
     for m in items:
         mid = m.get("item_id", "")
@@ -77,37 +87,42 @@ def check_thread(cl, name, thread_id, state):
         return
 
     # Print alerts
+    alerts = []
     for m in reversed(new_items):
         uid = str(m.get("user_id", ""))
-        user = user_map.get(uid, uid)
+        who = user_map.get(uid, f"user_{uid}")
+        if uid == me:
+            continue  # skip own messages
         ts = m.get("timestamp", 0)
         tstr = datetime.fromtimestamp(ts / 1_000_000).strftime("%H:%M")
         text = m.get("text", "") or "[media/video_call]"
-        who = f"@{user}" if not user.isdigit() else f"user_{user}"
-        print(f"[{name} @ {tstr}] {who}: {text}")
+        alerts.append(f"[{name}] {who} @ {tstr}: {text}")
+
+    if alerts:
+        for a in alerts:
+            print(f"📩 {a}")
 
     state[thread_id] = newest_id
 
 
 def main():
     if not SETTINGS_FILE.exists():
-        print("No session file. Login first with `python ig.py login`.", file=sys.stderr)
+        print("No session file. Login first with `python igt.py login`.", file=sys.stderr)
         sys.exit(1)
 
     cl = Client()
     cl.set_settings(json.loads(SETTINGS_FILE.read_text()))
 
-    # Verify session
     try:
         cl.get_timeline_feed()
     except Exception:
-        print("Session expired. Please re-login with `python ig.py login`.", file=sys.stderr)
+        print("Session expired. Re-login: `python igt.py login`.", file=sys.stderr)
         sys.exit(1)
 
+    watched = load_watched()
     state = load_state()
-    had_new = False
 
-    for name, thread_id in WATCHED.items():
+    for name, thread_id in watched.items():
         check_thread(cl, name, thread_id, state)
 
     save_state(state)

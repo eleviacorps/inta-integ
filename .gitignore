@@ -2,6 +2,7 @@
 .ig_session.json
 .ig_settings.json
 .ig_notify_state.json
+.igt_threads.json
 __pycache__/
 *.pyc
 .env
