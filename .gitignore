@@ -1,0 +1,6 @@
+.venv/
+.ig_session.json
+.ig_settings.json
+__pycache__/
+*.pyc
+.env
