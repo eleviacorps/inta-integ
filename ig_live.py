@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -25,6 +26,25 @@ STATE_FILE = PROJECT_DIR / ".ig_live_state.json"
 THREADS_FILE = PROJECT_DIR / ".igt_threads.json"
 
 from instagrapi import Client
+
+# ── Auto-reply config ────────────────────────────────────────────────
+AUTOREPLY_THREADS = {
+    "340282366841710301244276166510740991224": {  # chandra / Shereen
+        "match_patterns": [
+            r"what (are|r) (you|u) (doing|up to|up\b)",
+            r"wyd",
+            r"whats up",
+            r"wassup",
+            r"wsp",
+            r"where (are|r) (you|u)",
+            r"u?busy",
+            r"whatcha",
+            r"what.*do(ing|in)",
+        ],
+        "reply": "am making breakfast",
+    }
+}
+
 
 DEFAULT_WATCHED = {
     "dining room": "340282366841710301281152850720669272287",
@@ -100,6 +120,26 @@ def check_thread(cl, name, thread_id, state):
         last_seen_map[thread_id] = newest_id
         save_state(state)
         return
+
+    # Check for auto-reply conditions first
+    auto_config = AUTOREPLY_THREADS.get(thread_id)
+    if auto_config:
+        for m in new_items:
+            uid = str(m.get("user_id", ""))
+            if uid == me:
+                continue
+            text = (m.get("text", "") or "").strip().lower()
+            for pat in auto_config["match_patterns"]:
+                if re.search(pat, text):
+                    reply_text = auto_config["reply"]
+                    try:
+                        cl.direct_send(reply_text, thread_ids=[thread_id])
+                        print(f"\n🤖 Auto-replied to [{name}]: \"{reply_text}\"", flush=True)
+                    except Exception as e:
+                        print(f"[DAEMON] ⚠ [{name}] Auto-reply failed: {e}", flush=True)
+                    break
+            # Only check first message from them
+            break
 
     # Print in chronological order
     for m in reversed(new_items):
