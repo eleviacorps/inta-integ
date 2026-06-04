@@ -1,6 +1,8 @@
 .venv/
 .ig_session.json
 .ig_settings.json
+.ig_notify_state.json
 __pycache__/
 *.pyc
 .env
+debug_thread.py
