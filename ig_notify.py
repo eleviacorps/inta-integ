@@ -59,7 +59,9 @@ def check_thread(cl, name, thread_id, state):
     user_map = {str(u.get("pk", "")): f"@{u.get('username','?')}" for u in users}
     me = str(cl.user_id)
 
-    last_seen_map = state.get("last_seen", {})
+    if "last_seen" not in state:
+        state["last_seen"] = {}
+    last_seen_map = state["last_seen"]
     last_seen = last_seen_map.get(thread_id, "")
     newest_id = items[0].get("item_id", "")
 

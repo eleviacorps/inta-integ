@@ -9,6 +9,8 @@ Usage:
   python igt.py send <name> <msg> # Send a message
   python igt.py login             # Re-login if session expired
   python igt.py live              # Start live DM watcher daemon (polls every 20s)
+  python igt.py journal <name> [date]  # Daily journal (date: today/yesterday/YYYY-MM-DD)
+  python igt.py journal <name> [date] --save  # Save to .journals/<name>/<date>.txt
 """
 
 import json
@@ -24,6 +26,12 @@ SETTINGS_FILE = PROJECT_DIR / ".ig_settings.json"
 THREADS_FILE = PROJECT_DIR / ".igt_threads.json"
 
 from instagrapi import Client
+
+# Journal support
+import importlib.util as _igu
+_journal_spec = _igu.spec_from_file_location("ig_journal", PROJECT_DIR / "ig_journal.py")
+_journal = _igu.module_from_spec(_journal_spec)
+_journal_spec.loader.exec_module(_journal)
 
 # ── Default thread mappings (save/load from THREADS_FILE) ──────────
 DEFAULT_THREADS = {
@@ -201,6 +209,46 @@ def cmd_live(cl):
     subprocess.run(cmd)
 
 
+def cmd_journal(cl, name):
+    """Extract a full day's messages as a journal."""
+    threads = load_threads()
+    resolved, tid = resolve_name(name, threads)
+    if not resolved:
+        print(f"No thread matching '{name}'. Try `python igt.py scan` first.")
+        sys.exit(1)
+
+    # Parse optional date arg
+    date_arg = "today"
+    save = False
+    for arg in sys.argv[3:]:
+        if arg == "--save":
+            save = True
+        elif not arg.startswith("--"):
+            date_arg = arg
+
+    start_us, end_us, date_obj = _journal.parse_date(date_arg)
+    date_str = date_obj.strftime("%Y-%m-%d")
+    day_name = date_obj.strftime("%A")
+    thread_title = resolved
+
+    # Get thread info
+    resp = cl.private_request(f"direct_v2/threads/{tid}/", params={"limit": 1})
+    user_map = _journal.build_user_map(resp)
+    thread_title = resp.get("thread", {}).get("thread_title", "") or resolved
+
+    print(f"Fetching messages for {resolved} on {date_str} ({day_name})...")
+    messages = _journal.fetch_messages(cl, tid, start_us, end_us)
+    print(f"Found {len(messages)} messages.\n")
+
+    journal = _journal.format_journal(messages, user_map, cl.user_id, thread_title, date_str)
+
+    if save:
+        filepath = _journal.save_journal(journal, resolved, date_obj)
+        print(f"Saved: {filepath}\n")
+
+    print(journal)
+
+
 def cmd_watch(cl):
     """Add threads from scan to watch list by matching name."""
     print("Usage: python igt.py watch <partial_name>")
@@ -228,6 +276,7 @@ def main():
                                " ".join(sys.argv[3:]) if len(sys.argv) > 3 else ""),
         "login": lambda: cmd_login(Client()),
         "live": lambda: cmd_live(cl),
+        "journal": lambda: cmd_journal(cl, sys.argv[2] if len(sys.argv) > 2 else ""),
         "watch": lambda: cmd_watch(cl),
     }
 

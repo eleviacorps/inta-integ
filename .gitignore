@@ -8,3 +8,12 @@ __pycache__/
 *.pyc
 .env
 debug_thread.py
+
+# State & runtime files
+.elevia_daemon*.json
+.elevia_ping.json
+.elevia_replied.json
+.elevia_watchdog_state.json
+.journals/
+gc-profiles/
+_gc_fetch.json
